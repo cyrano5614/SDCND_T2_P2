@@ -18,10 +18,11 @@ UKF::UKF() {
   use_radar_ = true;
 
   // initial state vector
-  x_ = VectorXd(5);
+  n_x_ = 5;
+  x_ = VectorXd(n_x_);
 
   // initial covariance matrix
-  P_ = MatrixXd(5, 5);
+  P_ = MatrixXd(n_x_, n_x_);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
   std_a_ = 30;
@@ -44,13 +45,19 @@ UKF::UKF() {
   // Radar measurement noise standard deviation radius change in m/s
   std_radrd_ = 0.3;
 
-  /**
-  TODO:
+  is_initialized_ = false;
 
-  Complete the initialization. See ukf.h for other member properties.
+  previous_timestamp_ = 0;
 
-  Hint: one or more values initialized above might be wildly off...
-  */
+  n_aug_ = 7;
+
+  Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
+
+  weights_ = VectorXd(2 * n_aug_ + 1);
+
+  lambda_ = 3 - n_aug_;
+
+
 }
 
 UKF::~UKF() {}
@@ -66,6 +73,58 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   Complete this function! Make sure you switch between lidar and radar
   measurements.
   */
+  if (!is_initialized_)
+  {
+    x_ << 1, 1, 1, 1, 1;
+
+    P_ << 1, 0, 0, 0, 0,
+          0, 1, 0, 0, 0,
+          0, 0, 1, 0, 0,
+          0, 0, 0, 1, 0,
+          0, 0, 0, 0, 1;
+
+    if (meas_package.sensor_type_ == MeasurementPackage::RADAR)
+    {
+
+      double rho = meas_package.raw_measurements_(0);
+      double phi = meas_package.raw_measurements_(1);
+      double rho_dot = meas_package.raw_measurements_(2);
+
+      double px = rho * cos(phi);
+      double py = rho * sin(phi);
+      double vx = rho_dot * cos(phi);
+      double vy = rho_dot * sin(phi);
+      double v = sqrt(vx * vx + vy * vy);
+
+      x_ << px, py, v, 0, 0;
+    }
+
+    else if (meas_package.sensor_type_ == MeasurementPackage::LASER)
+    {
+      double px = meas_package.raw_measurements_(0);
+      double py = meas_package.raw_measurements_(1);
+
+      x_ << px, py, 0, 0, 0;
+    }
+
+    previous_timestamp_ = meas_package.timestamp_;
+    is_initialized_ = true;
+    return;
+  }
+
+  float dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0;
+  previous_timestamp_ = meas_package.timestamp_;
+
+  Prediction(dt);
+
+  if (meas_package.sensor_type_ == MeasurementPackage::RADAR)
+  {
+    UpdateRadar(meas_package);
+  }
+  else
+  {
+    UpdateLidar(meas_package);
+  }
 }
 
 /**
