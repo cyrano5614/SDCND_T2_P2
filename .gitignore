@@ -2,6 +2,6 @@
 .DS_Store
 
 # build files
-build/
+build_eclipse/
 
 data/
